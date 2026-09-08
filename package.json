@@ -74,6 +74,7 @@
     "build": "rimraf dist && tsc && rollup -c rollup.config.mjs",
     "docgen": "docgen --api PlayGamesPlugin --output-readme README.md",
     "typecheck": "tsc --noEmit",
-    "verify": "bun run typecheck && bun run build"
+    "verify": "bun run typecheck && bun run build",
+    "prepublishOnly": "bun run verify"
   }
 }
