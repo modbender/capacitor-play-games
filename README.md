@@ -43,10 +43,26 @@ line above. Renaming it is a mechanical follow-up, not a blocker.
 
 ### Status
 
-The TypeScript builds and typechecks clean (TypeScript 7.0.2). The **Android
-side has not yet been compiled** against a real Capacitor app in this fork — the
-Gradle fix above is derived by reading the build script, not yet confirmed by a
-green build. Treat it as unproven until that spike runs.
+**Android is verified.** The plugin module compiles and assembles against a
+real Capacitor 8 app — `:…-capacitor-play-games:assembleDebug` is BUILD
+SUCCESSFUL on Gradle 8.14.3, Android Gradle Plugin 8.13.0 and JDK 21.
+
+The Gradle fix is confirmed by reproduction rather than by reading: revert that
+one line, rebuild, and the build fails with exactly the error upstream's open
+issue reports —
+
+```
+Could not find method kotlin() for arguments [...] on project
+':modbender-capacitor-play-games' of type org.gradle.api.Project.
+```
+
+Worth knowing: the module keeps upstream's own buildscript classpath pinning AGP
+9.3.1 and Kotlin 2.4.10, which is *higher* than the consuming app's AGP 8.13.0.
+That combination was expected to be a second conflict and is not — it resolves
+and builds green as-is.
+
+The TypeScript builds and typechecks clean on TypeScript 7.0.2. **iOS remains
+untested**; nothing here has been through Xcode.
 
 The original MIT copyright is retained in [LICENSE](./LICENSE) alongside this
 fork's.

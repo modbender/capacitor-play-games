@@ -18,7 +18,9 @@ what that recovery involved.
   `kotlin-gradle-plugin` on the buildscript classpath and used a
   `kotlin { compilerOptions { ... } }` block without ever applying the plugin,
   so Gradle failed with `Could not find method kotlin()` before compiling any
-  source. Not yet confirmed by a Gradle run in this fork.
+  source. Verified by reproduction: with the line reverted the build fails with
+  that exact error, and with it applied `assembleDebug` succeeds against a
+  Capacitor 8 app on Gradle 8.14.3 / AGP 8.13.0 / JDK 21.
 
 ### Changed
 
