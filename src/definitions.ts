@@ -2,9 +2,9 @@ import type { PluginListenerHandle } from "@capacitor/core";
 
 /** A signed-in player's public profile. */
 export interface PlayerInfo {
-  /** Stable, platform-assigned player id (PGS player id / GameKit `gamePlayerID`). */
+  /** Stable, platform-assigned Play Games player id. */
   playerId: string;
-  /** Display name as shown in Google Play Games / Game Center. */
+  /** Display name as shown in Google Play Games. */
   displayName: string;
   /** URL of the player's avatar image, when the platform exposes one. */
   avatarUrl?: string;
@@ -40,47 +40,20 @@ export interface SnapshotMeta {
   modifiedAt: number;
 }
 
-/**
- * A GameKit identity-verification bundle
- * (`GKLocalPlayer.fetchItems(forIdentityVerificationSignature:)`). A third-party
- * server verifies `signature` against the certificate at `publicKeyUrl` to trust
- * the Game Center `playerId` without relaying it through the untrusted client.
- */
-export interface IdentityVerificationSignature {
-  /** URL of Apple's public-key certificate used to verify `signature`. */
-  publicKeyUrl: string;
-  /** Base64-encoded signature over the verification payload. */
-  signature: string;
-  /** Base64-encoded random salt Apple mixed into the signed payload. */
-  salt: string;
-  /** Signature creation time, in epoch milliseconds (check freshness server-side). */
-  timestamp: number;
-  /** The player id the signature attests (GameKit `gamePlayerID`). */
-  playerId: string;
-  /** The app's bundle id, part of the signed payload. */
-  bundleId: string;
-  /** GameKit `teamPlayerID` (stable across the team's games), when available. */
-  teamPlayerId?: string;
-  /** GameKit `gamePlayerID` (stable per game), when available. */
-  gamePlayerId?: string;
-}
-
 /** Payload of the `signInStateChanged` event. */
 export type SignInStateChangedEvent = SignInResult;
 
 export interface PlayGamesPlugin {
   /**
-   * Initialize the native games SDK. Idempotent.
-   *
-   * On Android this triggers `PlayGamesSdk.initialize`; on iOS it installs the
-   * GameKit authentication handler. Call once, after any App Tracking
-   * Transparency prompt has resolved, before the other methods.
+   * No-op. `PlayGamesSdk.initialize` runs automatically when the plugin
+   * loads, driven by the Capacitor bridge — this call exists only to keep
+   * the API symmetric with the web fallback.
    *
    * @since 0.1.0
    */
   initialize(): Promise<void>;
   /**
-   * Sign in to the platform games service.
+   * Sign in to Google Play Games.
    *
    * `silent` (default `true`) attempts auto sign-in with no UI; on most devices
    * this succeeds if the player has previously authenticated this game. Pass
@@ -102,8 +75,8 @@ export interface PlayGamesPlugin {
   /**
    * Get the signed-in player's profile.
    *
-   * On Android and iOS this rejects when no player is signed in. On web (the
-   * no-op fallback) it resolves an empty profile (`playerId: ""`).
+   * Rejects when no player is signed in. On web (the no-op fallback) it
+   * resolves an empty profile (`playerId: ""`).
    * @since 0.1.0
    */
   getPlayer(): Promise<PlayerInfo>;
@@ -116,8 +89,7 @@ export interface PlayGamesPlugin {
    * is redeemed against it server-side. `forceRefresh` (default `false`) requests a
    * fresh code even if one was recently granted.
    *
-   * Android only. iOS rejects (unimplemented); the web fallback resolves an empty
-   * `authCode`.
+   * The web fallback resolves an empty `authCode`.
    * @since 0.2.0
    */
   requestServerSideAccess(opts: {
@@ -127,20 +99,7 @@ export interface PlayGamesPlugin {
     authCode: string;
   }>;
   /**
-   * Fetch a GameKit identity-verification signature for the signed-in Game Center
-   * player (`GKLocalPlayer.fetchItems(forIdentityVerificationSignature:)`). A
-   * backend verifies the returned bundle against Apple's certificate to trust the
-   * player id rather than the untrusted client's claim. Rejects when no player is
-   * signed in.
-   *
-   * iOS only. Android rejects (unimplemented); the web fallback resolves an empty
-   * bundle.
-   * @since 0.2.0
-   */
-  fetchIdentityVerificationSignature(): Promise<IdentityVerificationSignature>;
-  /**
-   * Unlock an achievement by its platform id (Play Console achievement id on
-   * Android, App Store Connect / Game Center id on iOS).
+   * Unlock an achievement by its Play Console achievement id.
    * @since 0.1.0
    */
   unlockAchievement(opts: {
@@ -149,11 +108,8 @@ export interface PlayGamesPlugin {
   /**
    * Increment a partial (incremental) achievement.
    *
-   * `steps` is interpreted differently per platform: on Android (PGS) it is a
-   * discrete step count toward the achievement's Play Console step total; on
-   * iOS (GameKit) it is added to `percentComplete` as percentage points.
-   * Compute a platform-appropriate value (e.g. via `Capacitor.getPlatform()`)
-   * so progress matches on both stores.
+   * `steps` is a discrete step count toward the achievement's Play Console
+   * step total, and must be greater than 0 — the call rejects otherwise.
    * @since 0.1.0
    */
   incrementAchievement(opts: {
@@ -161,12 +117,12 @@ export interface PlayGamesPlugin {
     steps: number;
   }): Promise<void>;
   /**
-   * Show the platform's native achievements UI.
+   * Show the native Google Play Games achievements UI.
    * @since 0.1.0
    */
   showAchievements(): Promise<void>;
   /**
-   * Submit a score to a leaderboard by its platform id.
+   * Submit a score to a leaderboard by its Play Console leaderboard id.
    * @since 0.1.0
    */
   submitScore(opts: {
@@ -221,7 +177,7 @@ export interface PlayGamesPlugin {
   }): Promise<void>;
   /**
    * Listen for sign-in state changes: an interactive sign-in completing, or the
-   * player signing out of the platform service system-wide.
+   * player signing out of Google Play Games system-wide.
    * @since 0.1.0
    */
   addListener(event: "signInStateChanged", listener: (e: SignInStateChangedEvent) => void): Promise<PluginListenerHandle>;

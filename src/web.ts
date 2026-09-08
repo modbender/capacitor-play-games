@@ -1,7 +1,6 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
-  IdentityVerificationSignature,
   PlayerInfo,
   PlayGamesPlugin,
   SignInResult,
@@ -30,17 +29,6 @@ export class PlayGamesWeb extends WebPlugin implements PlayGamesPlugin {
 
   async requestServerSideAccess(): Promise<{ authCode: string }> {
     return { authCode: "" };
-  }
-
-  async fetchIdentityVerificationSignature(): Promise<IdentityVerificationSignature> {
-    return {
-      publicKeyUrl: "",
-      signature: "",
-      salt: "",
-      timestamp: 0,
-      playerId: "",
-      bundleId: "",
-    };
   }
 
   async unlockAchievement(): Promise<void> {}

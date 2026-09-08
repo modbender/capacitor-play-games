@@ -1,9 +1,8 @@
 # @modbender/capacitor-play-games
 
-Capacitor 8 plugin for platform games services: **Google Play Games Services
-(PGS v2)** on Android and **Apple GameKit / Game Center** on iOS, with a safe
-no-op fallback on web. One TypeScript API covers sign-in, achievements,
-leaderboards, and saved games across both platforms.
+Capacitor 8 plugin for **Google Play Games Services (PGS v2)** on Android,
+with a safe no-op fallback on web. One TypeScript API covers sign-in,
+achievements, leaderboards, and saved games.
 
 ## About this fork
 
@@ -13,17 +12,22 @@ This is a fork of [`@idleflowgames/capacitor-play-games`](https://www.npmjs.com/
 Upstream's GitHub repository — `github.com/idleflowgames/capacitor-play-games`,
 the URL its own `package.json` still points at — returned 404 on 2026-09-08,
 while the npm package remained published. The source here was recovered from
-that published tarball rather than forked through GitHub. The Kotlin, Swift,
-Gradle and podspec files ship in the tarball and are vendored byte-for-byte. The
-TypeScript layer does **not** ship — the package carries `dist/` only, and its
-sourcemaps set `sourcesContent: false` — so `src/` here was reconstructed from
-`dist/esm/*.js` plus the emitted `.d.ts`. The declarations retained every doc
-comment, which makes that reconstruction faithful rather than a rewrite.
+that published tarball rather than forked through GitHub. At recovery, the
+Kotlin, Swift, Gradle and podspec files shipped in the tarball and were
+vendored byte-for-byte. The TypeScript layer did **not** ship — the package
+carried `dist/` only, and its sourcemaps set `sourcesContent: false` — so
+`src/` here was reconstructed from `dist/esm/*.js` plus the emitted `.d.ts`.
+The declarations retained every doc comment, which made that reconstruction
+faithful rather than a rewrite.
 
-That claim is checked rather than asserted: building `src/` here reproduces
-upstream's published `dist/` exactly — all six emitted files, both the `.js` and
-the `.d.ts`, are identical to the ones in the 0.2.1 tarball once formatting is
-normalised.
+That claim was checked rather than asserted, at 0.3.0, before any of the
+changes below: building `src/` as reconstructed reproduced upstream's
+published `dist/` exactly — all six emitted files, both the `.js` and the
+`.d.ts`, were identical to the ones in the 0.2.1 tarball once formatting was
+normalised. That is what established the reconstruction was faithful. It is a
+historical checkpoint, not a standing guarantee — the 0.4.0 changes below
+(iOS removed, in particular) mean this tree no longer reproduces upstream's
+`dist/`, by design.
 
 ### Changes from upstream 0.2.1
 
@@ -32,9 +36,12 @@ normalised.
   `kotlin { compilerOptions { ... } }` block, but never applies the plugin, so
   Gradle rejects that block with `Could not find method kotlin()` before
   compiling any source. One line.
-- Renamed to the `@modbender` scope, and the SwiftPM product renamed with it —
-  Capacitor derives that product name from the full scoped package name, so the
-  two cannot drift apart. See the comment in `Package.swift`.
+- Renamed to the `@modbender` scope.
+- **iOS support removed entirely** (0.4.0): the `ios/` sources, `Package.swift`,
+  `CapacitorPlayGames.podspec`, and `fetchIdentityVerificationSignature()`. The
+  Swift was inherited from upstream and had never been compiled or run —
+  nothing had been through Xcode. The package is now Android plus a safe web
+  no-op fallback; see the changelog for the full rationale.
 
 Deliberately unchanged: the Android namespace is still
 `com.idleflowgames.playgames`. Keeping it means this tree diffs cleanly against
@@ -61,8 +68,7 @@ Worth knowing: the module keeps upstream's own buildscript classpath pinning AGP
 That combination was expected to be a second conflict and is not — it resolves
 and builds green as-is.
 
-The TypeScript builds and typechecks clean on TypeScript 7.0.2. **iOS remains
-untested**; nothing here has been through Xcode.
+The TypeScript builds and typechecks clean on TypeScript 7.0.2.
 
 The original MIT copyright is retained in [LICENSE](./LICENSE) alongside this
 fork's.
@@ -76,21 +82,16 @@ bunx cap sync
 
 ## Supported platforms
 
-| Platform | Backing API                                          | Notes                                                       |
-| -------- | ---------------------------------------------------- | ----------------------------------------------------------- |
-| Android  | Google Play Games Services v2 (`play-services-games-v2`) | Requires PGS configured in the Google Play Console.     |
-| iOS      | Apple GameKit / Game Center                          | Requires the Game Center capability + App Store Connect setup. |
-| Web      | none                                                 | Every method resolves to a safe default (signed out, empty). |
+| Platform | Backing API                                              | Notes                                                        |
+| -------- | -------------------------------------------------------- | ------------------------------------------------------------ |
+| Android  | Google Play Games Services v2 (`play-services-games-v2`) | Requires PGS configured in the Google Play Console.          |
+| Web      | none                                                     | Every method resolves to a safe default (signed out, empty). |
 
 ## Platform setup
 
 Achievement and leaderboard **ids are yours**: the plugin takes opaque id strings
-and passes them straight through to the platform. Create them in the Google Play
-Console (Android) and App Store Connect / Game Center (iOS), then pass the
-matching id at each call site. The two platforms issue different ids for the same
-logical achievement, so keep a per-platform map in your app.
-
-### Android
+and passes them straight through to Play Games Services. Create them in the
+Google Play Console, then pass the matching id at each call site.
 
 Configure Play Games Services v2 in the Google Play Console, then wire your
 project id into Android resources and the app manifest (see Google's
@@ -113,17 +114,6 @@ project id into Android resources and the app manifest (see Google's
 `google-services.json` is not required for PGS v2 on its own; it is only needed
 if you also wire Firebase.
 
-### iOS
-
-Enable the **Game Center** capability on your app target in Xcode and create the
-app's achievements / leaderboards in App Store Connect. The system presents the
-Game Center sign-in UI.
-
-> If your app shows an App Tracking Transparency (ATT) prompt, request it
-> **before** calling `initialize()`. iOS suppresses an ATT prompt shown while
-> Game Center's "Welcome back" banner is on screen, and `initialize()` is what
-> can trigger that banner.
-
 ## Usage
 
 ```ts
@@ -137,8 +127,8 @@ if (!signedIn) {
   await PlayGames.signIn({ silent: false });
 }
 
-await PlayGames.unlockAchievement({ id: platformAchievementId });
-await PlayGames.submitScore({ leaderboardId: platformLeaderboardId, score: 1234 });
+await PlayGames.unlockAchievement({ id: achievementId });
+await PlayGames.submitScore({ leaderboardId, score: 1234 });
 
 // Cross-device saves:
 await PlayGames.saveSnapshot({ name: "main", data: JSON.stringify(state) });
@@ -162,7 +152,6 @@ On web every method resolves to a safe default, so gate feature usage behind
 * [`isSignedIn()`](#issignedin)
 * [`getPlayer()`](#getplayer)
 * [`requestServerSideAccess(...)`](#requestserversideaccess)
-* [`fetchIdentityVerificationSignature()`](#fetchidentityverificationsignature)
 * [`unlockAchievement(...)`](#unlockachievement)
 * [`incrementAchievement(...)`](#incrementachievement)
 * [`showAchievements()`](#showachievements)
@@ -189,11 +178,9 @@ On web every method resolves to a safe default, so gate feature usage behind
 initialize() => Promise<void>
 ```
 
-Initialize the native games SDK. Idempotent.
-
-On Android this triggers `PlayGamesSdk.initialize`; on iOS it installs the
-GameKit authentication handler. Call once, after any App Tracking
-Transparency prompt has resolved, before the other methods.
+No-op. `PlayGamesSdk.initialize` runs automatically when the plugin
+loads, driven by the Capacitor bridge — this call exists only to keep
+the API symmetric with the web fallback.
 
 **Since:** 0.1.0
 
@@ -206,7 +193,7 @@ Transparency prompt has resolved, before the other methods.
 signIn(opts?: { silent?: boolean | undefined; } | undefined) => Promise<SignInResult>
 ```
 
-Sign in to the platform games service.
+Sign in to Google Play Games.
 
 `silent` (default `true`) attempts auto sign-in with no UI; on most devices
 this succeeds if the player has previously authenticated this game. Pass
@@ -247,8 +234,8 @@ getPlayer() => Promise<PlayerInfo>
 
 Get the signed-in player's profile.
 
-On Android and iOS this rejects when no player is signed in. On web (the
-no-op fallback) it resolves an empty profile (`playerId: ""`).
+Rejects when no player is signed in. On web (the no-op fallback) it
+resolves an empty profile (`playerId: ""`).
 
 **Returns:** <code>Promise&lt;<a href="#playerinfo">PlayerInfo</a>&gt;</code>
 
@@ -271,8 +258,7 @@ Games Services v2 `GamesSignInClient.requestServerSideAccess`).
 is redeemed against it server-side. `forceRefresh` (default `false`) requests a
 fresh code even if one was recently granted.
 
-Android only. iOS rejects (unimplemented); the web fallback resolves an empty
-`authCode`.
+The web fallback resolves an empty `authCode`.
 
 | Param      | Type                                                             |
 | ---------- | ---------------------------------------------------------------- |
@@ -285,36 +271,13 @@ Android only. iOS rejects (unimplemented); the web fallback resolves an empty
 --------------------
 
 
-### fetchIdentityVerificationSignature()
-
-```typescript
-fetchIdentityVerificationSignature() => Promise<IdentityVerificationSignature>
-```
-
-Fetch a GameKit identity-verification signature for the signed-in Game Center
-player (`GKLocalPlayer.fetchItems(forIdentityVerificationSignature:)`). A
-backend verifies the returned bundle against Apple's certificate to trust the
-player id rather than the untrusted client's claim. Rejects when no player is
-signed in.
-
-iOS only. Android rejects (unimplemented); the web fallback resolves an empty
-bundle.
-
-**Returns:** <code>Promise&lt;<a href="#identityverificationsignature">IdentityVerificationSignature</a>&gt;</code>
-
-**Since:** 0.2.0
-
---------------------
-
-
 ### unlockAchievement(...)
 
 ```typescript
 unlockAchievement(opts: { id: string; }) => Promise<void>
 ```
 
-Unlock an achievement by its platform id (Play Console achievement id on
-Android, App Store Connect / Game Center id on iOS).
+Unlock an achievement by its Play Console achievement id.
 
 | Param      | Type                         |
 | ---------- | ---------------------------- |
@@ -333,11 +296,8 @@ incrementAchievement(opts: { id: string; steps: number; }) => Promise<void>
 
 Increment a partial (incremental) achievement.
 
-`steps` is interpreted differently per platform: on Android (PGS) it is a
-discrete step count toward the achievement's Play Console step total; on
-iOS (GameKit) it is added to `percentComplete` as percentage points.
-Compute a platform-appropriate value (e.g. via `Capacitor.getPlatform()`)
-so progress matches on both stores.
+`steps` is a discrete step count toward the achievement's Play Console
+step total, and must be greater than 0 — the call rejects otherwise.
 
 | Param      | Type                                        |
 | ---------- | ------------------------------------------- |
@@ -354,7 +314,7 @@ so progress matches on both stores.
 showAchievements() => Promise<void>
 ```
 
-Show the platform's native achievements UI.
+Show the native Google Play Games achievements UI.
 
 **Since:** 0.1.0
 
@@ -367,7 +327,7 @@ Show the platform's native achievements UI.
 submitScore(opts: { leaderboardId: string; score: number; }) => Promise<void>
 ```
 
-Submit a score to a leaderboard by its platform id.
+Submit a score to a leaderboard by its Play Console leaderboard id.
 
 | Param      | Type                                                   |
 | ---------- | ------------------------------------------------------ |
@@ -485,7 +445,7 @@ addListener(event: "signInStateChanged", listener: (e: SignInStateChangedEvent) 
 ```
 
 Listen for sign-in state changes: an interactive sign-in completing, or the
-player signing out of the platform service system-wide.
+player signing out of Google Play Games system-wide.
 
 | Param          | Type                                                                  |
 | -------------- | --------------------------------------------------------------------- |
@@ -531,28 +491,9 @@ A signed-in player's public profile.
 
 | Prop              | Type                | Description                                                                   |
 | ----------------- | ------------------- | ----------------------------------------------------------------------------- |
-| **`playerId`**    | <code>string</code> | Stable, platform-assigned player id (PGS player id / GameKit `gamePlayerID`). |
-| **`displayName`** | <code>string</code> | Display name as shown in Google Play Games / Game Center.                     |
-| **`avatarUrl`**   | <code>string</code> | URL of the player's avatar image, when the platform exposes one.              |
-
-
-#### IdentityVerificationSignature
-
-A GameKit identity-verification bundle
-(`GKLocalPlayer.fetchItems(forIdentityVerificationSignature:)`). A third-party
-server verifies `signature` against the certificate at `publicKeyUrl` to trust
-the Game Center `playerId` without relaying it through the untrusted client.
-
-| Prop               | Type                | Description                                                                   |
-| ------------------ | ------------------- | ----------------------------------------------------------------------------- |
-| **`publicKeyUrl`** | <code>string</code> | URL of Apple's public-key certificate used to verify `signature`.             |
-| **`signature`**    | <code>string</code> | Base64-encoded signature over the verification payload.                       |
-| **`salt`**         | <code>string</code> | Base64-encoded random salt Apple mixed into the signed payload.               |
-| **`timestamp`**    | <code>number</code> | Signature creation time, in epoch milliseconds (check freshness server-side). |
-| **`playerId`**     | <code>string</code> | The player id the signature attests (GameKit `gamePlayerID`).                 |
-| **`bundleId`**     | <code>string</code> | The app's bundle id, part of the signed payload.                              |
-| **`teamPlayerId`** | <code>string</code> | GameKit `teamPlayerID` (stable across the team's games), when available.      |
-| **`gamePlayerId`** | <code>string</code> | GameKit `gamePlayerID` (stable per game), when available.                     |
+| **`playerId`**    | <code>string</code> | Stable, platform-assigned Play Games player id.                   |
+| **`displayName`** | <code>string</code> | Display name as shown in Google Play Games.                       |
+| **`avatarUrl`**   | <code>string</code> | URL of the player's avatar image, when the platform exposes one.  |
 
 
 #### Snapshot
@@ -604,7 +545,7 @@ bun run verify   # typecheck + build
 ```
 
 The TypeScript bridge is built to `dist/` (ESM + CJS + types). The native sources
-under `android/` and `ios/` ship in the package and are wired up by `npx cap sync`.
+under `android/` ship in the package and are wired up by `npx cap sync`.
 
 ## License
 

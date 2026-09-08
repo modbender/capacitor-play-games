@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-08
+
+### Removed
+
+- iOS support, entirely: the `ios/` sources, `Package.swift`,
+  `CapacitorPlayGames.podspec`, and `fetchIdentityVerificationSignature()` (the
+  GameKit identity-verification bundle it returned) along with the
+  `IdentityVerificationSignature` interface. The Swift was inherited from
+  upstream and had never been compiled or run — nothing had been through
+  Xcode — so this deletes no working functionality. The package is now
+  Android plus a safe web no-op fallback.
+
+### Changed
+
+- `package.json` `description` no longer claims iOS support.
+
 ## [0.3.0] - 2026-09-08
 
 Forked from `@idleflowgames/capacitor-play-games` 0.2.1. Upstream's GitHub
