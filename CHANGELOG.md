@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-08
+
+Forked from `@idleflowgames/capacitor-play-games` 0.2.1. Upstream's GitHub
+repository 404s while its npm package remains published, so the source was
+recovered from the published tarball; see "About this fork" in the README for
+what that recovery involved.
+
+### Fixed
+
+- Android: apply the Kotlin Android plugin. The build script declared
+  `kotlin-gradle-plugin` on the buildscript classpath and used a
+  `kotlin { compilerOptions { ... } }` block without ever applying the plugin,
+  so Gradle failed with `Could not find method kotlin()` before compiling any
+  source. Not yet confirmed by a Gradle run in this fork.
+
+### Changed
+
+- Renamed to `@modbender/capacitor-play-games`, and the SwiftPM product from
+  `IdleflowgamesCapacitorPlayGames` to `ModbenderCapacitorPlayGames` to match —
+  Capacitor derives the product name from the full scoped package name.
+- Toolchain: pnpm to bun; dropped the Biome and SwiftLint dev dependencies
+  rather than ship lint configuration that has never been run here.
+
+### Unchanged
+
+- The Android namespace stays `com.idleflowgames.playgames`, so this tree diffs
+  cleanly against the 0.2.1 tarball.
+
 ## [0.2.1] - 2026-07-30
 
 ### Changed

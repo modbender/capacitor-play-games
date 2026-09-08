@@ -7,9 +7,9 @@ Pod::Spec.new do |s|
   s.version = package['version']
   s.summary = package['description']
   s.license = package['license']
-  s.homepage = 'https://github.com/idleflowgames/capacitor-play-games'
-  s.author = { 'Idle Flow Games' => 'hello@idleflowgames.com' }
-  s.source = { :git => 'https://github.com/idleflowgames/capacitor-play-games.git', :tag => s.version.to_s }
+  s.homepage = 'https://github.com/modbender/capacitor-play-games'
+  s.author = 'modbender'
+  s.source = { :git => 'https://github.com/modbender/capacitor-play-games.git', :tag => s.version.to_s }
   s.source_files = 'ios/Plugin/**/*.{swift,h,m,c,cc,mm,cpp}'
   s.ios.deployment_target = '14.0'
   s.dependency 'Capacitor'

@@ -1,15 +1,61 @@
-# @idleflowgames/capacitor-play-games
+# @modbender/capacitor-play-games
 
 Capacitor 8 plugin for platform games services: **Google Play Games Services
 (PGS v2)** on Android and **Apple GameKit / Game Center** on iOS, with a safe
 no-op fallback on web. One TypeScript API covers sign-in, achievements,
 leaderboards, and saved games across both platforms.
 
+## About this fork
+
+This is a fork of [`@idleflowgames/capacitor-play-games`](https://www.npmjs.com/package/@idleflowgames/capacitor-play-games)
+0.2.1, MIT-licensed.
+
+Upstream's GitHub repository — `github.com/idleflowgames/capacitor-play-games`,
+the URL its own `package.json` still points at — returned 404 on 2026-09-08,
+while the npm package remained published. The source here was recovered from
+that published tarball rather than forked through GitHub. The Kotlin, Swift,
+Gradle and podspec files ship in the tarball and are vendored byte-for-byte. The
+TypeScript layer does **not** ship — the package carries `dist/` only, and its
+sourcemaps set `sourcesContent: false` — so `src/` here was reconstructed from
+`dist/esm/*.js` plus the emitted `.d.ts`. The declarations retained every doc
+comment, which makes that reconstruction faithful rather than a rewrite.
+
+That claim is checked rather than asserted: building `src/` here reproduces
+upstream's published `dist/` exactly — all six emitted files, both the `.js` and
+the `.d.ts`, are identical to the ones in the 0.2.1 tarball once formatting is
+normalised.
+
+### Changes from upstream 0.2.1
+
+- **`android/build.gradle` now applies the Kotlin Android plugin.** Upstream puts
+  `kotlin-gradle-plugin` on the buildscript classpath and uses a
+  `kotlin { compilerOptions { ... } }` block, but never applies the plugin, so
+  Gradle rejects that block with `Could not find method kotlin()` before
+  compiling any source. One line.
+- Renamed to the `@modbender` scope, and the SwiftPM product renamed with it —
+  Capacitor derives that product name from the full scoped package name, so the
+  two cannot drift apart. See the comment in `Package.swift`.
+
+Deliberately unchanged: the Android namespace is still
+`com.idleflowgames.playgames`. Keeping it means this tree diffs cleanly against
+the 0.2.1 tarball, so a reviewer can confirm the Android delta is exactly the one
+line above. Renaming it is a mechanical follow-up, not a blocker.
+
+### Status
+
+The TypeScript builds and typechecks clean (TypeScript 7.0.2). The **Android
+side has not yet been compiled** against a real Capacitor app in this fork — the
+Gradle fix above is derived by reading the build script, not yet confirmed by a
+green build. Treat it as unproven until that spike runs.
+
+The original MIT copyright is retained in [LICENSE](./LICENSE) alongside this
+fork's.
+
 ## Install
 
 ```bash
-npm install @idleflowgames/capacitor-play-games
-npx cap sync
+bun add @modbender/capacitor-play-games
+bunx cap sync
 ```
 
 ## Supported platforms
@@ -65,7 +111,7 @@ Game Center sign-in UI.
 ## Usage
 
 ```ts
-import { PlayGames } from "@idleflowgames/capacitor-play-games";
+import { PlayGames } from "@modbender/capacitor-play-games";
 
 await PlayGames.initialize();
 
@@ -537,8 +583,8 @@ Payload of the `signInStateChanged` event.
 ## Development
 
 ```bash
-pnpm install
-pnpm verify      # lint + typecheck + build + pack check
+bun install
+bun run verify   # typecheck + build
 ```
 
 The TypeScript bridge is built to `dist/` (ESM + CJS + types). The native sources
@@ -546,4 +592,4 @@ under `android/` and `ios/` ship in the package and are wired up by `npx cap syn
 
 ## License
 
-[MIT](./LICENSE) © Idle Flow Games
+[MIT](./LICENSE) © Idle Flow Games (original), © modbender (fork)
