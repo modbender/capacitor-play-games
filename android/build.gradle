@@ -22,6 +22,11 @@ buildscript {
 }
 
 apply plugin: 'com.android.library'
+// The module is written in Kotlin, so the Kotlin Android plugin has to be
+// applied, not merely present on the buildscript classpath. Without this line
+// the kotlin {} block below is an unknown method and the build fails before
+// any source is compiled.
+apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
     namespace = "com.idleflowgames.playgames"
