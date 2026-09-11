@@ -1,13 +1,14 @@
 package com.idleflowgames.playgames
 
+import com.getcapacitor.JSObject
 import com.getcapacitor.PluginCall
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.games.PlayGames
+import org.json.JSONException
 
 internal class SignInModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     private val signInClient get() = PlayGames.getGamesSignInClient(activity)
-    private val playersClient get() = PlayGames.getPlayersClient(activity)
 
     fun signIn(call: PluginCall) {
         val silent = call.getBoolean("silent", true) ?: true
@@ -46,20 +47,34 @@ internal class SignInModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
             return
         }
         val forceRefresh = call.getBoolean("forceRefresh", false) ?: false
-        signInClient.requestServerSideAccess(serverClientId, forceRefresh)
-            .bind(call, "server-side access failed") { authCode ->
-                jsObject { put("authCode", authCode) }
+        val requested = call.getArray("scopes")
+        if (requested == null) {
+            signInClient.requestServerSideAccess(serverClientId, forceRefresh)
+                .bind(call, "server-side access failed") { authCode ->
+                    jsObject { put("authCode", authCode) }
+                }
+            return
+        }
+        val names = try {
+            requested.toList<String>()
+        } catch (e: JSONException) {
+            return call.reject("scopes must be an array of strings")
+        }
+        val scopes = names.map { name ->
+            AUTH_SCOPES.codeOf(name)
+                ?: return call.reject("unknown scope '$name'; expected one of ${AUTH_SCOPES.names}")
+        }
+        signInClient.requestServerSideAccess(serverClientId, forceRefresh, scopes)
+            .bind(call, "server-side access failed") { response ->
+                jsObject {
+                    put("authCode", response.authCode)
+                    put("grantedScopes", response.grantedScopes.orEmpty().toJsArray(AUTH_SCOPES::nameOf))
+                }
             }
     }
 
-    fun getPlayer(call: PluginCall) {
-        playersClient.currentPlayer.bind(call, "player lookup failed") { player ->
-            player.toJsObject()
-        }
-    }
-
     private fun resolveWithPlayer(call: PluginCall) {
-        playersClient.currentPlayer
+        plugin.players.currentPlayer()
             .addOnSuccessListener { player ->
                 emitAndResolve(call, jsObject {
                     put("signedIn", true)
@@ -76,7 +91,7 @@ internal class SignInModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
         emitAndResolve(call, jsObject { put("signedIn", false) })
     }
 
-    private fun emitAndResolve(call: PluginCall, body: com.getcapacitor.JSObject) {
+    private fun emitAndResolve(call: PluginCall, body: JSObject) {
         plugin.emit("signInStateChanged", body)
         call.resolve(body)
     }

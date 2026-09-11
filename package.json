@@ -1,7 +1,7 @@
 {
   "name": "@modbender/capacitor-play-games",
-  "version": "0.4.0",
-  "description": "Capacitor 8 plugin for Google Play Games Services (Android): sign-in, achievements, leaderboards, and saved games, with a safe no-op web fallback.",
+  "version": "0.5.0",
+  "description": "Capacitor 8 plugin binding the full Google Play Games Services v2 client surface (Android): sign-in, players and friends, achievements, leaderboards, saved games, game stats, legacy events, Recall, and player stats, with a safe no-op web fallback.",
   "type": "module",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -35,7 +35,11 @@
     "pgs",
     "achievements",
     "leaderboards",
-    "saved-games"
+    "saved-games",
+    "snapshots",
+    "game-stats",
+    "player-stats",
+    "recall"
   ],
   "capacitor": {
     "android": {

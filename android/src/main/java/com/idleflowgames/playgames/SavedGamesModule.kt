@@ -1,12 +1,20 @@
 package com.idleflowgames.playgames
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.activity.result.ActivityResult
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.PluginCall
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.games.GamesClientStatusCodes
 import com.google.android.gms.games.PlayGames
 import com.google.android.gms.games.SnapshotsClient
 import com.google.android.gms.games.snapshot.SnapshotMetadata
 import com.google.android.gms.games.snapshot.SnapshotMetadataChange
+import com.google.android.gms.tasks.Tasks
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -17,55 +25,75 @@ internal class SavedGamesModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
 
     fun load(call: PluginCall) {
         val name = call.getString("name") ?: return call.reject("missing name")
+        val policy = call.conflictPolicyOption() ?: return
         // Blocking snapshot I/O off the main thread (GMS Task listeners default to UI).
-        client.open(name, /* createIfNotFound = */ true, AUTO_RESOLVE)
+        // Reading must not create: a caller asking for a save that is not there wants
+        // null back, not an empty snapshot left behind in the player's list.
+        client.open(name, /* createIfNotFound = */ false, policy)
             .addOnSuccessListener(IO_EXECUTOR) { result ->
                 val snap = result.data
                 if (snap == null) {
                     call.resolve(jsObject { put("snapshot", JSObject.NULL) })
                     return@addOnSuccessListener
                 }
-                val bytes = snap.snapshotContents.readFully() ?: ByteArray(0)
-                val payload = jsObject {
-                    put("name", snap.metadata.uniqueName)
-                    put("description", snap.metadata.description ?: "")
-                    put("modifiedAt", snap.metadata.lastModifiedTimestamp)
+                val bytes = try {
+                    snap.snapshotContents.readFully()
+                } catch (e: IOException) {
+                    client.discardAndClose(snap)
+                    call.rejectFromException(e, "snapshot read failed")
+                    return@addOnSuccessListener
+                }
+                val payload = snap.metadata.toJsObject().apply {
                     put("data", String(bytes, StandardCharsets.UTF_8))
                 }
                 client.discardAndClose(snap)
                 call.resolve(jsObject { put("snapshot", payload) })
             }
             .addOnFailureListener(IO_EXECUTOR) { e ->
-                call.rejectFromException(e, "snapshot load failed")
+                if ((e as? ApiException)?.statusCode == GamesClientStatusCodes.SNAPSHOT_NOT_FOUND) {
+                    call.resolve(jsObject { put("snapshot", JSObject.NULL) })
+                } else {
+                    call.rejectFromException(e, "snapshot load failed")
+                }
             }
     }
 
     fun save(call: PluginCall) {
         val name = call.getString("name") ?: return call.reject("missing name")
         val data = call.getString("data") ?: return call.reject("missing data")
-        val description = call.getString("description") ?: ""
+        val policy = call.conflictPolicyOption() ?: return
+        val change = SnapshotMetadataChange.Builder()
+            .setDescription(call.getString("description") ?: "")
+        call.getLong("playedTimeMillis")?.let { change.setPlayedTimeMillis(it) }
+        call.getLong("progressValue")?.let { change.setProgressValue(it) }
+        val coverImage = call.getString("coverImage")
+        if (coverImage != null) {
+            val bitmap = decodeCoverImage(coverImage)
+                ?: return call.reject("coverImage is not base64 that decodes to an image")
+            change.setCoverImage(bitmap)
+        }
+        val metadataChange = change.build()
 
         // Blocking snapshot I/O off the main thread.
-        client.open(name, /* createIfNotFound = */ true, AUTO_RESOLVE)
+        client.open(name, /* createIfNotFound = */ true, policy)
             .continueWithTask(IO_EXECUTOR) { task ->
                 val snap = task.result?.data
                     ?: throw IllegalStateException("snapshot unavailable")
                 snap.snapshotContents.writeBytes(data.toByteArray(StandardCharsets.UTF_8))
-                val change = SnapshotMetadataChange.Builder()
-                    .setDescription(description)
-                    .build()
-                client.commitAndClose(snap, change)
+                client.commitAndClose(snap, metadataChange)
             }
             .bind(call, "snapshot save failed")
     }
 
     fun list(call: PluginCall) {
-        client.load(/* forceReload = */ false).bind(call, "snapshot list failed") { result ->
-            val arr = JSArray()
-            result.get()?.use { buf ->
-                for (i in 0 until buf.count) arr.put(buf.get(i).toJsObject())
+        val forceReload = call.getBoolean("forceReload", false) ?: false
+        client.load(forceReload).bind(call, "snapshot list failed") { result ->
+            jsObject {
+                put(
+                    "snapshots",
+                    result.get()?.use { it.toJsArray(SnapshotMetadata::toJsObject) } ?: JSArray(),
+                )
             }
-            jsObject { put("snapshots", arr) }
         }
     }
 
@@ -81,8 +109,45 @@ internal class SavedGamesModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
             .bind(call, "snapshot delete failed")
     }
 
+    fun show(call: PluginCall) {
+        val title = call.getString("title") ?: DEFAULT_PICKER_TITLE
+        val allowAdd = call.getBoolean("allowAdd", true) ?: true
+        val allowDelete = call.getBoolean("allowDelete", true) ?: true
+        val maxSnapshots = call.getInt("maxSnapshots", SnapshotsClient.DISPLAY_LIMIT_NONE)
+            ?: SnapshotsClient.DISPLAY_LIMIT_NONE
+        plugin.launchUiIntent(
+            client.getSelectSnapshotIntent(title, allowAdd, allowDelete, maxSnapshots),
+            call,
+            "onSnapshotUiResult",
+        )
+    }
+
+    fun limits(call: PluginCall) {
+        val maxDataSize = client.maxDataSize
+        val maxCoverImageSize = client.maxCoverImageSize
+        Tasks.whenAll(maxDataSize, maxCoverImageSize).bind(call, "snapshot limits failed") { _ ->
+            jsObject {
+                put("maxDataSize", maxDataSize.result)
+                put("maxCoverImageSize", maxCoverImageSize.result)
+            }
+        }
+    }
+
+    /** Resolve a `showSnapshots` call from the picker result; nothing picked yields null. */
+    fun resolveSelection(call: PluginCall, result: ActivityResult) {
+        val extras = result.data?.extras
+        val isNew = extras?.getBoolean(SnapshotsClient.EXTRA_SNAPSHOT_NEW, false) ?: false
+        val meta = if (isNew || extras == null) null else SnapshotsClient.getSnapshotFromBundle(extras)
+        call.resolve(
+            jsObject {
+                put("snapshot", meta?.toJsObject() ?: JSObject.NULL)
+                put("isNew", isNew)
+            },
+        )
+    }
+
     private companion object {
-        const val AUTO_RESOLVE = SnapshotsClient.RESOLUTION_POLICY_MOST_RECENTLY_MODIFIED
+        const val DEFAULT_PICKER_TITLE = "Saved games"
 
         // Serial daemon thread for snapshot file I/O.
         val IO_EXECUTOR: Executor = Executors.newSingleThreadExecutor { r ->
@@ -91,29 +156,33 @@ internal class SavedGamesModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 }
 
-private fun SnapshotMetadata.toJsObject(): JSObject = jsObject {
+private fun PluginCall.conflictPolicyOption(): Int? =
+    enumOption(
+        "conflictPolicy",
+        SNAPSHOT_CONFLICT_POLICIES,
+        SnapshotsClient.RESOLUTION_POLICY_MOST_RECENTLY_MODIFIED,
+    )
+
+private fun decodeCoverImage(base64: String): Bitmap? {
+    val bytes = try {
+        Base64.decode(base64, Base64.DEFAULT)
+    } catch (e: IllegalArgumentException) {
+        return null
+    }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+}
+
+internal fun SnapshotMetadata.toJsObject(): JSObject = jsObject {
     put("name", uniqueName)
-    put("description", description ?: "")
+    put("snapshotId", snapshotId)
+    put("description", description.orEmpty())
     put("modifiedAt", lastModifiedTimestamp)
-}
-
-/** SnapshotMetadataBuffer has release() but isn't Closeable; provide a use {} of our own. */
-private inline fun <R> com.google.android.gms.games.snapshot.SnapshotMetadataBuffer.use(
-    block: (com.google.android.gms.games.snapshot.SnapshotMetadataBuffer) -> R,
-): R {
-    try {
-        return block(this)
-    } finally {
-        release()
+    putUnlessSentinel("playedTimeMillis", playedTime, SnapshotMetadata.PLAYED_TIME_UNKNOWN)
+    putUnlessSentinel("progressValue", progressValue, SnapshotMetadata.PROGRESS_VALUE_UNKNOWN)
+    putIfPresent("deviceName", deviceName)
+    coverImageUri?.let {
+        put("coverImageUrl", it.toString())
+        put("coverImageAspectRatio", coverImageAspectRatio.toDouble())
     }
-}
-
-private fun com.google.android.gms.games.snapshot.SnapshotMetadataBuffer.firstOrNull(
-    predicate: (SnapshotMetadata) -> Boolean,
-): SnapshotMetadata? {
-    for (i in 0 until count) {
-        val m = get(i)
-        if (predicate(m)) return m
-    }
-    return null
+    put("hasChangePending", hasChangePending())
 }
