@@ -5,6 +5,74 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-11
+
+Binds the rest of the Play Games Services v2 client surface: every one of
+`PlayGames`'s nine client factories now has at least one method behind it,
+measured directly out of `play-services-games-v2-22.0.0-api.jar` with
+`javap`. See "What this plugin deliberately doesn't bind" in the README for
+the surface that was considered and left out, and why.
+
+### Added
+
+- Players: `getPlayerId`, `loadPlayer`, `loadFriends`,
+  `loadRecentlyPlayedWithPlayers`, `showPlayerSearch`, `showComparePlayer`.
+  `getPlayer`'s `PlayerInfo` result gains hi-res and banner image URLs, title,
+  level/XP, friend status and friends-list visibility.
+- Achievements: `revealAchievement`, `setAchievementSteps`,
+  `loadAchievements`.
+- Leaderboards: `loadLeaderboards`, `loadLeaderboard`, `loadTopScores`,
+  `loadPlayerCenteredScores`, `loadCurrentPlayerScore`. `showLeaderboard`
+  gains `timeSpan`/`collection` to preselect which slice of the leaderboard
+  opens.
+- Saved games: `showSnapshots`, `getSnapshotLimits`. `loadSnapshot` and
+  `saveSnapshot` gain `conflictPolicy`, one of the SDK's four automatic
+  resolution strategies; `saveSnapshot` also gains `playedTimeMillis`,
+  `progressValue` and `coverImage`. Snapshot metadata now carries
+  `snapshotId`, played time, progress, device name and cover image
+  alongside the existing fields.
+- Game stats (`GameStatsClient`, new in the 22.0.0 SDK): `recordGameEvent`,
+  `recordGameEvents`, `recordProgressUpdate`, `requestGameEventsUpload`.
+- Legacy Play Console events (`EventsClient`): `incrementEvent`,
+  `loadEvents`, `loadEventsByIds`.
+- Recall (`RecallClient`): `requestRecallAccess`.
+- Player stats (`PlayerStatsClient`): `loadPlayerStats`.
+- `requestServerSideAccess` gains `scopes`, to additionally request OAuth
+  scope consent and get back which scopes were actually granted.
+- Every new method has a safe no-op web fallback, matching the existing
+  methods' convention.
+
+### Changed
+
+- **`unlockAchievement`, `incrementAchievement` and `submitScore` now
+  resolve only after the server has recorded the write**, using the SDK's
+  `*Immediate` variants instead of their fire-and-forget counterparts. In
+  0.4.0 and earlier these promises resolved before the server had the
+  write; a caller that timed these calls, or relied on the old
+  near-instant resolution, will see them take noticeably longer now.
+  `incrementAchievement` also gains an `{ unlocked: boolean }` result, and
+  `submitScore` gains a `scoreTag` option and a `ScoreSubmissionResult`
+  result in place of `void`.
+- **`loadSnapshot` now actually resolves `{ snapshot: null }` for a name with
+  no save**, instead of manufacturing and returning an empty snapshot. The
+  native call previously passed `createIfNotFound = true`, so a missing save
+  was silently created rather than reported, making the null-result behaviour
+  this method has documented since 0.1.0 unreachable in practice; it now
+  passes `false` and recognises the platform's not-found status specifically.
+  This aligns the implementation with the documented contract rather than
+  changing that contract, but it is still a breaking behaviour change for a
+  caller that assumed a non-null result: that assumption now needs a null
+  check, and reading a save that doesn't exist no longer leaves an empty
+  snapshot in the player's saved-games list as a side effect.
+- Game stats recording (`recordGameEvent`/`recordGameEvents`/
+  `recordProgressUpdate`) is the opposite: the native SDK methods return no
+  result at all, so these resolve as soon as the event is queued on the
+  device, not once Google has it. `requestGameEventsUpload` is the only
+  confirmation point in that API.
+- `package.json` `description` and `keywords` to cover the full surface
+  rather than the original sign-in/achievements/leaderboards/saved-games
+  set.
+
 ## [0.4.0] - 2026-09-08
 
 ### Removed
