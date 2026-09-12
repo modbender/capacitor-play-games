@@ -5,6 +5,7 @@ import com.getcapacitor.PluginCall
 import com.google.android.gms.games.PlayGames
 import com.google.android.gms.games.playergameevent.PlayerGameEvent
 import org.json.JSONException
+import org.json.JSONObject
 
 /**
  * Play Games game stats. All three client methods return void, so a resolved call
@@ -14,20 +15,22 @@ internal class GameStatsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     private val client get() = PlayGames.getGameStatsClient(activity)
 
     fun recordEvent(call: PluginCall) {
-        val name = call.getString("name") ?: return call.reject("missing name")
+        val name = call.requireString("name") ?: return
         val event = call.buildOrReject { buildEvent(name, call.getObject("properties")) } ?: return
         client.recordEvent(event)
         call.resolve()
     }
 
     fun recordEvents(call: PluginCall) {
-        val raw = call.getArray("events") ?: return call.reject("missing events")
+        val raw = call.requireArray("events") ?: return
         if (raw.length() > MAX_EVENTS_PER_BATCH) {
             return call.reject("at most $MAX_EVENTS_PER_BATCH events per batch, got ${raw.length()}")
         }
         val events = call.buildOrReject {
             (0 until raw.length()).map { index ->
-                val entry = JSObject.fromJSONObject(raw.getJSONObject(index))
+                val source = raw.opt(index) as? JSONObject
+                    ?: throw IllegalArgumentException("events[$index] is not an object")
+                val entry = JSObject.fromJSONObject(source)
                 val name = entry.getString("name")
                     ?: throw IllegalArgumentException("events[$index] is missing name")
                 buildEvent(name, entry.getJSObject("properties"))
@@ -38,8 +41,7 @@ internal class GameStatsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun recordProgressUpdate(call: PluginCall) {
-        val currentProgress = call.getInt("currentProgress")
-            ?: return call.reject("missing currentProgress")
+        val currentProgress = call.requireInt("currentProgress") ?: return
         val event = call.buildOrReject {
             buildEvent(
                 PROGRESS_UPDATE_EVENT_NAME,

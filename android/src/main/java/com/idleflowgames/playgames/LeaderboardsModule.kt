@@ -13,19 +13,19 @@ internal class LeaderboardsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     private val client get() = PlayGames.getLeaderboardsClient(activity)
 
     fun submit(call: PluginCall) {
-        val id = call.getString("leaderboardId") ?: return call.reject("missing leaderboardId")
-        val score = call.getDouble("score") ?: return call.reject("missing score")
+        val id = call.requireString("leaderboardId") ?: return
+        val score = call.requireNumber("score")?.toLong() ?: return
         val scoreTag = call.getString("scoreTag")
         val task = if (scoreTag == null) {
-            client.submitScoreImmediate(id, score.toLong())
+            client.submitScoreImmediate(id, score)
         } else {
-            client.submitScoreImmediate(id, score.toLong(), scoreTag)
+            client.submitScoreImmediate(id, score, scoreTag)
         }
         task.bind(call, "submitScore failed") { it.toJsObject() }
     }
 
     fun show(call: PluginCall) {
-        val id = call.getString("leaderboardId") ?: return call.reject("missing leaderboardId")
+        val id = call.requireString("leaderboardId") ?: return
         // The one- and two-argument intents let the PGS UI choose the time span and
         // collection it shows, which is not the same thing as asking for all-time and
         // public; widen to a longer overload only when the caller named one.
@@ -46,7 +46,7 @@ internal class LeaderboardsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun loadAll(call: PluginCall) {
-        val forceReload = call.getBoolean("forceReload", false) ?: false
+        val forceReload = call.forceReload()
         client.loadLeaderboardMetadata(forceReload).bindAnnotated(call, "loadLeaderboards failed") { buffer ->
             jsObject {
                 put("leaderboards", buffer?.use { it.toJsArray(Leaderboard::toJsObject) } ?: JSArray())
@@ -55,8 +55,8 @@ internal class LeaderboardsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun loadOne(call: PluginCall) {
-        val id = call.getString("leaderboardId") ?: return call.reject("missing leaderboardId")
-        val forceReload = call.getBoolean("forceReload", false) ?: false
+        val id = call.requireString("leaderboardId") ?: return
+        val forceReload = call.forceReload()
         client.loadLeaderboardMetadata(id, forceReload).bindAnnotated(call, "loadLeaderboard failed") { board ->
             jsObject { put("leaderboard", board?.toJsObject() ?: JSObject.NULL) }
         }
@@ -67,7 +67,7 @@ internal class LeaderboardsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     fun loadPlayerCenteredScores(call: PluginCall) = loadScores(call, centered = true)
 
     fun loadCurrentPlayerScore(call: PluginCall) {
-        val id = call.getString("leaderboardId") ?: return call.reject("missing leaderboardId")
+        val id = call.requireString("leaderboardId") ?: return
         val timeSpan = call.timeSpanOption() ?: return
         val collection = call.collectionOption() ?: return
         client.loadCurrentPlayerLeaderboardScore(id, timeSpan, collection)
@@ -77,11 +77,11 @@ internal class LeaderboardsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     private fun loadScores(call: PluginCall, centered: Boolean) {
-        val id = call.getString("leaderboardId") ?: return call.reject("missing leaderboardId")
+        val id = call.requireString("leaderboardId") ?: return
         val timeSpan = call.timeSpanOption() ?: return
         val collection = call.collectionOption() ?: return
-        val maxResults = call.getInt("maxResults", DEFAULT_MAX_RESULTS) ?: DEFAULT_MAX_RESULTS
-        val forceReload = call.getBoolean("forceReload", false) ?: false
+        val maxResults = call.intOption("maxResults", DEFAULT_MAX_RESULTS) ?: return
+        val forceReload = call.forceReload()
         val task = if (centered) {
             client.loadPlayerCenteredScores(id, timeSpan, collection, maxResults, forceReload)
         } else {
@@ -164,8 +164,8 @@ internal fun ScoreSubmissionData.toJsObject(): JSObject = jsObject {
     put("playerId", playerId)
     val results = JSArray()
     for (timeSpan in SUBMISSION_TIME_SPANS) {
-        // Declared non-null, but a submission that touched no board for this span
-        // yields nothing, so the result is read through a nullable local.
+        // Declared @NonNull upstream; read through a nullable local so a broken
+        // contract degrades to a missing span rather than an exception.
         val result: ScoreSubmissionData.Result? = getScoreResult(timeSpan)
         if (result == null) continue
         val span = TIME_SPANS.nameOf(timeSpan) ?: continue

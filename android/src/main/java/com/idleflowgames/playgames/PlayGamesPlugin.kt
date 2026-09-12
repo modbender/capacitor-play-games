@@ -76,8 +76,9 @@ class PlayGamesPlugin : Plugin() {
     }
 
     /**
-     * Launch a GMS resolution PendingIntent. Returns false when no launcher could be
-     * registered, which is the caller's signal to report the unresolved state instead.
+     * Launch a GMS resolution PendingIntent. False means nothing was launched, whether
+     * because no launcher is registered, because another resolution is still outstanding,
+     * or because the launch threw; the caller reports the unresolved state instead.
      */
     internal fun launchIntentSender(
         pendingIntent: PendingIntent,
