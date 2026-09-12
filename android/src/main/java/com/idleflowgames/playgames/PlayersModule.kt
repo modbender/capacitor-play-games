@@ -28,17 +28,17 @@ internal class PlayersModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun loadPlayer(call: PluginCall) {
-        val playerId = call.getString("playerId") ?: return call.reject("missing playerId")
-        val forceReload = call.getBoolean("forceReload", false) ?: false
+        val playerId = call.requireString("playerId") ?: return
+        val forceReload = call.forceReload()
         client.loadPlayer(playerId, forceReload).bindAnnotated(call, "loadPlayer failed") { player ->
             jsObject { put("player", player?.toJsObject() ?: JSObject.NULL) }
         }
     }
 
-    @Suppress("DEPRECATION") // deprecated upstream; the 0.5.0 surface binds it deliberately
+    @Suppress("DEPRECATION") // deprecated upstream; bound deliberately rather than dropped
     fun loadRecentlyPlayedWith(call: PluginCall) {
-        val pageSize = call.getInt("pageSize", DEFAULT_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE
-        val forceReload = call.getBoolean("forceReload", false) ?: false
+        val pageSize = call.intOption("pageSize", DEFAULT_PAGE_SIZE) ?: return
+        val forceReload = call.forceReload()
         client.loadRecentlyPlayedWithPlayers(pageSize, forceReload)
             .bindAnnotated(call, "loadRecentlyPlayedWithPlayers failed") { buffer ->
                 jsObject {
@@ -48,9 +48,9 @@ internal class PlayersModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun loadFriends(call: PluginCall) {
-        val pageSize = call.getInt("pageSize", DEFAULT_PAGE_SIZE) ?: DEFAULT_PAGE_SIZE
-        val forceReload = call.getBoolean("forceReload", false) ?: false
-        val resolve = call.getBoolean("resolve", false) ?: false
+        val pageSize = call.intOption("pageSize", DEFAULT_PAGE_SIZE) ?: return
+        val forceReload = call.forceReload()
+        val resolve = call.boolOption("resolve", false)
         loadFriendsPage(call, pageSize, forceReload, allowResolution = resolve)
     }
 
@@ -59,7 +59,7 @@ internal class PlayersModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun showCompare(call: PluginCall) {
-        val playerId = call.getString("playerId") ?: return call.reject("missing playerId")
+        val playerId = call.requireString("playerId") ?: return
         val otherName = call.getString("otherPlayerInGameName")
         val currentName = call.getString("currentPlayerInGameName")
         val intent = if (otherName == null && currentName == null) {

@@ -10,17 +10,17 @@ internal class AchievementsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     private val client get() = PlayGames.getAchievementsClient(activity)
 
     fun unlock(call: PluginCall) {
-        val id = call.getString("id") ?: return call.reject("missing id")
+        val id = call.requireString("id") ?: return
         client.unlockImmediate(id).bind(call, "unlockAchievement failed")
     }
 
     fun reveal(call: PluginCall) {
-        val id = call.getString("id") ?: return call.reject("missing id")
+        val id = call.requireString("id") ?: return
         client.revealImmediate(id).bind(call, "revealAchievement failed")
     }
 
     fun increment(call: PluginCall) {
-        val id = call.getString("id") ?: return call.reject("missing id")
+        val id = call.requireString("id") ?: return
         val steps = call.stepsOption() ?: return
         client.incrementImmediate(id, steps).bind(call, "incrementAchievement failed") { unlocked ->
             jsObject { put("unlocked", unlocked) }
@@ -28,7 +28,7 @@ internal class AchievementsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun setSteps(call: PluginCall) {
-        val id = call.getString("id") ?: return call.reject("missing id")
+        val id = call.requireString("id") ?: return
         val steps = call.stepsOption() ?: return
         client.setStepsImmediate(id, steps).bind(call, "setAchievementSteps failed") { unlocked ->
             jsObject { put("unlocked", unlocked) }
@@ -36,7 +36,7 @@ internal class AchievementsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun load(call: PluginCall) {
-        val forceReload = call.getBoolean("forceReload", false) ?: false
+        val forceReload = call.forceReload()
         client.load(forceReload).bindAnnotated(call, "loadAchievements failed") { buffer ->
             jsObject {
                 put("achievements", buffer?.use { it.toJsArray(Achievement::toJsObject) } ?: JSArray())
@@ -50,11 +50,7 @@ internal class AchievementsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
 }
 
 private fun PluginCall.stepsOption(): Int? {
-    val steps = getInt("steps")
-    if (steps == null) {
-        reject("missing steps")
-        return null
-    }
+    val steps = requireInt("steps") ?: return null
     if (steps <= 0) {
         reject("steps must be > 0")
         return null

@@ -699,6 +699,10 @@ export interface PlayGamesPlugin {
    * changes them. See "Saved games" in the README's Limits section for
    * Google's documented figures and an important caveat about the unit
    * these two numbers are in.
+   *
+   * The web fallback resolves both as `0`. Check `isSignedIn()` before
+   * treating either as a real limit, because comparing a payload length
+   * against a zero reports every save as oversized.
    * @since 0.5.0
    */
   getSnapshotLimits(): Promise<{

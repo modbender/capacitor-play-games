@@ -8,10 +8,12 @@ import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.PluginCall
 import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.games.AnnotatedData
 import com.google.android.gms.games.GamesClientStatusCodes
 import com.google.android.gms.games.PlayGames
 import com.google.android.gms.games.SnapshotsClient
 import com.google.android.gms.games.snapshot.SnapshotMetadata
+import com.google.android.gms.games.snapshot.SnapshotMetadataBuffer
 import com.google.android.gms.games.snapshot.SnapshotMetadataChange
 import com.google.android.gms.tasks.Tasks
 import java.io.IOException
@@ -19,12 +21,16 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
-/** PGS Saved Games (Snapshots). Conflicts resolve most-recently-modified-wins (no merge). */
+/**
+ * PGS Saved Games (Snapshots). A conflict is resolved by the policy the call names,
+ * defaulting to most-recently-modified. The SDK's manual-resolution path is not bound,
+ * so one side always wins outright and nothing is merged.
+ */
 internal class SavedGamesModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     private val client get() = PlayGames.getSnapshotsClient(activity)
 
     fun load(call: PluginCall) {
-        val name = call.getString("name") ?: return call.reject("missing name")
+        val name = call.requireString("name") ?: return
         val policy = call.conflictPolicyOption() ?: return
         // Blocking snapshot I/O off the main thread (GMS Task listeners default to UI).
         // Reading must not create: a caller asking for a save that is not there wants
@@ -59,13 +65,13 @@ internal class SavedGamesModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun save(call: PluginCall) {
-        val name = call.getString("name") ?: return call.reject("missing name")
-        val data = call.getString("data") ?: return call.reject("missing data")
+        val name = call.requireString("name") ?: return
+        val data = call.requireString("data") ?: return
         val policy = call.conflictPolicyOption() ?: return
         val change = SnapshotMetadataChange.Builder()
             .setDescription(call.getString("description") ?: "")
-        call.getLong("playedTimeMillis")?.let { change.setPlayedTimeMillis(it) }
-        call.getLong("progressValue")?.let { change.setProgressValue(it) }
+        if (!call.readLong("playedTimeMillis") { change.setPlayedTimeMillis(it) }) return
+        if (!call.readLong("progressValue") { change.setProgressValue(it) }) return
         val coverImage = call.getString("coverImage")
         if (coverImage != null) {
             val bitmap = decodeCoverImage(coverImage)
@@ -79,14 +85,19 @@ internal class SavedGamesModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
             .continueWithTask(IO_EXECUTOR) { task ->
                 val snap = task.result?.data
                     ?: throw IllegalStateException("snapshot unavailable")
-                snap.snapshotContents.writeBytes(data.toByteArray(StandardCharsets.UTF_8))
+                if (!snap.snapshotContents.writeBytes(data.toByteArray(StandardCharsets.UTF_8))) {
+                    // writeBytes reports failure by return value; committing anyway would
+                    // resolve the call on contents that were never written.
+                    client.discardAndClose(snap)
+                    throw IOException("snapshot write failed")
+                }
                 client.commitAndClose(snap, metadataChange)
             }
             .bind(call, "snapshot save failed")
     }
 
     fun list(call: PluginCall) {
-        val forceReload = call.getBoolean("forceReload", false) ?: false
+        val forceReload = call.forceReload()
         client.load(forceReload).bind(call, "snapshot list failed") { result ->
             jsObject {
                 put(
@@ -98,23 +109,30 @@ internal class SavedGamesModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     }
 
     fun delete(call: PluginCall) {
-        val name = call.getString("name") ?: return call.reject("missing name")
+        val name = call.requireString("name") ?: return
+        // The cached list can predate a snapshot written this session, so a miss is
+        // re-checked against a forced reload before it is reported as absent.
         client.load(false)
-            .continueWithTask { task ->
-                val meta = task.result?.get()?.use { buf ->
-                    buf.firstOrNull { it.uniqueName == name }?.freeze()
-                } ?: throw NoSuchElementException("snapshot '$name' not found")
-                client.delete(meta)
+            .continueWithTask { cached ->
+                val meta = cached.result?.findSnapshot(name)
+                if (meta != null) {
+                    client.delete(meta)
+                } else {
+                    client.load(true).continueWithTask { reloaded ->
+                        val fresh = reloaded.result?.findSnapshot(name)
+                            ?: throw NoSuchElementException("snapshot '$name' not found")
+                        client.delete(fresh)
+                    }
+                }
             }
             .bind(call, "snapshot delete failed")
     }
 
     fun show(call: PluginCall) {
         val title = call.getString("title") ?: DEFAULT_PICKER_TITLE
-        val allowAdd = call.getBoolean("allowAdd", true) ?: true
-        val allowDelete = call.getBoolean("allowDelete", true) ?: true
-        val maxSnapshots = call.getInt("maxSnapshots", SnapshotsClient.DISPLAY_LIMIT_NONE)
-            ?: SnapshotsClient.DISPLAY_LIMIT_NONE
+        val allowAdd = call.boolOption("allowAdd", true)
+        val allowDelete = call.boolOption("allowDelete", true)
+        val maxSnapshots = call.intOption("maxSnapshots", SnapshotsClient.DISPLAY_LIMIT_NONE) ?: return
         plugin.launchUiIntent(
             client.getSelectSnapshotIntent(title, allowAdd, allowDelete, maxSnapshots),
             call,
@@ -162,6 +180,9 @@ private fun PluginCall.conflictPolicyOption(): Int? =
         SNAPSHOT_CONFLICT_POLICIES,
         SnapshotsClient.RESOLUTION_POLICY_MOST_RECENTLY_MODIFIED,
     )
+
+private fun AnnotatedData<SnapshotMetadataBuffer>.findSnapshot(name: String): SnapshotMetadata? =
+    get()?.use { buffer -> buffer.firstOrNull { it.uniqueName == name }?.freeze() }
 
 private fun decodeCoverImage(base64: String): Bitmap? {
     val bytes = try {

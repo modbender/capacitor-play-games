@@ -5,13 +5,12 @@ import com.getcapacitor.PluginCall
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.games.PlayGames
-import org.json.JSONException
 
 internal class SignInModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     private val signInClient get() = PlayGames.getGamesSignInClient(activity)
 
     fun signIn(call: PluginCall) {
-        val silent = call.getBoolean("silent", true) ?: true
+        val silent = call.boolOption("silent", true)
         // Interactive sign-in can crash uncatchably inside GMS's
         // GamesResolutionActivity on devices with a broken Play Services install
         // (some custom ROMs). Pre-flight the availability check and bail to
@@ -46,20 +45,15 @@ internal class SignInModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
             call.reject("serverClientId is required")
             return
         }
-        val forceRefresh = call.getBoolean("forceRefresh", false) ?: false
-        val requested = call.getArray("scopes")
-        if (requested == null) {
+        val forceRefresh = call.boolOption("forceRefresh", false)
+        if (call.rawOption("scopes") == null) {
             signInClient.requestServerSideAccess(serverClientId, forceRefresh)
                 .bind(call, "server-side access failed") { authCode ->
                     jsObject { put("authCode", authCode) }
                 }
             return
         }
-        val names = try {
-            requested.toList<String>()
-        } catch (e: JSONException) {
-            return call.reject("scopes must be an array of strings")
-        }
+        val names = call.requireStringList("scopes") ?: return
         val scopes = names.map { name ->
             AUTH_SCOPES.codeOf(name)
                 ?: return call.reject("unknown scope '$name'; expected one of ${AUTH_SCOPES.names}")

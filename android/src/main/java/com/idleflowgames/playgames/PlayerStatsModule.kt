@@ -9,7 +9,7 @@ internal class PlayerStatsModule(plugin: PlayGamesPlugin) : PgsModule(plugin) {
     private val client get() = PlayGames.getPlayerStatsClient(activity)
 
     fun load(call: PluginCall) {
-        val forceReload = call.getBoolean("forceReload", false) ?: false
+        val forceReload = call.forceReload()
         client.loadPlayerStats(forceReload).bindAnnotated(call, "loadPlayerStats failed") { stats ->
             jsObject { put("stats", stats?.toJsObject() ?: JSObject()) }
         }
