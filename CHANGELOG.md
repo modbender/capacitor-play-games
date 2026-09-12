@@ -73,6 +73,22 @@ the surface that was considered and left out, and why.
   rather than the original sign-in/achievements/leaderboards/saved-games
   set.
 
+### Fixed
+
+- `submitScore` rejected any score at or above 2,147,483,648 as a missing
+  score, in every release from 0.1.0. Capacitor's `PluginCall` number getters
+  each accept exactly one boxed type, while Android's JSON parser boxes an
+  integer by magnitude, so `getDouble` never saw a score large enough to be
+  parsed as a 64-bit integer. Options are now read through one reader that
+  coerces from any number, so the whole `long` range a leaderboard accepts is
+  reachable.
+- A malformed array reaching the plugin killed the app instead of rejecting
+  the promise. An exception escaping a plugin method reaches Capacitor's
+  bridge as a crash, and the array helper the plugin used casts without
+  checking. Array options are now validated element by element and the call
+  rejects, naming the element at fault. Reachable only by a caller bypassing
+  the TypeScript types.
+
 ## [0.4.0] - 2026-09-08
 
 ### Removed
